@@ -2,18 +2,21 @@ import torch
 import torch.nn as nn
 import numpy as np
 from geoopt.tensor import ManifoldParameter, ManifoldTensor
+from geoopt.manifolds import Stiefel
 
 from utils.manifold import SPDManifold
 
 class SPDBatchNorm(nn.Module):
     def __init__(self, shape, num_epochs, karcher_steps=1, gamma_test=0.1,
                  mean = None, std = None, learn_mean = False, learn_std = True, 
+                 learn_rot = False,
                  eps=1e-5, device = "cpu"):
         super().__init__()
         self.shape = shape
         self.karcher_steps = karcher_steps
         self.learn_mean = learn_mean
         self.learn_std = learn_std
+        self.learn_rot = learn_rot
         self.eps = eps
         self.manifold = SPDManifold()
         self.num_epochs = num_epochs
@@ -49,6 +52,8 @@ class SPDBatchNorm(nn.Module):
             else:
                 self.mean = ManifoldTensor(init_mean.clone(), manifold=self.manifold)
 
+        
+
         if std is not None: #\nu_\phi
             self.std = std
         else:
@@ -66,6 +71,14 @@ class SPDBatchNorm(nn.Module):
 
             else:
                 self.std = init_var.clone()
+
+        self.rot_mat_manifold = Stiefel()
+        if self.learn_rot:
+            self.rot_mat = ManifoldParameter(self.rot_mat_manifold.origin(shape[-1], shape[-1], device=device), 
+                                             manifold=self.rot_mat_manifold)
+        
+        else:
+            self.rot_mat = self.rot_mat_manifold.origin(shape,device=device)
 
     def forward(self, X, epoch=None):
         #epoch only needed if in training mode
@@ -108,5 +121,7 @@ class SPDBatchNorm(nn.Module):
 
         Xn = self.manifold.parallel_transp_to_id(fromA=fromA_batch, transportX=X) #transport to Id
         Xn = self.manifold._matrix_power(Xn, alpha) #rescale by std dev rate
+        if self.learn_rot:
+            Xn = torch.transpose(self.rot_mat, dim0=-2, dim1=-1) @ Xn @ self.rot_mat
 
         return Xn

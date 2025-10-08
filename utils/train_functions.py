@@ -48,7 +48,7 @@ def train_m1(m1, train_loader, beta, epoch, loss_dict, optimizer):
                 )
             )
         
-def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer):
+def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer, optimizer_riem):
     m1.train()
     m2.train()
     b_loss, b_recon_m2, b_kl_m2, b_yprior, b_yclass, b_recon_m1, b_kl_m1  = 0., 0., 0., 0., 0., 0., 0.
@@ -57,6 +57,8 @@ def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer):
         x = x.to(m1.device)
         y = y.to(m2.device)
         optimizer.zero_grad()
+        optimizer_riem.zero_grad()
+
 
         #=== M1 ===
         m1_varparams = m1(x, dom_id, epoch)
@@ -64,6 +66,11 @@ def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer):
         m2_varparams = m2(m1_varparams["z1_mean_m1"], y)
 
         l1, diag1  = m1.unsupervised_loss(m1_varparams, x, dom_id, beta)
+        
+        #debug
+        rv = m1.get_spd_bn(dom_id).running_var.clone().detach()
+        print("running_var mean, min, max:", rv.mean().item(), rv.min().item(), rv.max().item())
+
         l2, diag2 = m2.supervised_loss(m1_varparams["z1"], m1_varparams["z1_mean_m1"], y, m2_varparams, alpha)
 
         loss = l1+l2
@@ -71,11 +78,13 @@ def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer):
 
         loss.backward()
 
-        for name, param in m2.named_parameters():
-            if param.grad is not None and "qy_z1_logits" in name:
-                print(f"Grad {name}: {param.grad.abs().mean().item():.6f}")
+        # for name, param in m2.named_parameters():
+        #     if param.grad is not None and "qy_z1_logits" in name:
+        #         print(f"Grad {name}: {param.grad.abs().mean().item():.6f}")
 
         optimizer.step()
+        optimizer_riem.step()
+
         b_loss += loss.item()
         b_recon_m2 += diag2["recon_loss"].mean().item()
         b_kl_m2 += diag2["kl_z2_loss"].mean().item()
@@ -129,9 +138,9 @@ def freeze_m1_train_m2(m1, m2, train_loader, loss_dict, optimizer):
 
         epoch_loss += loss.item()
 
-        for name, param in m2.named_parameters():
-            if param.grad is not None and "qy_z1_logits" in name:
-                print(f"Grad {name}: {param.grad.abs().mean().item():.6f}")
+        # for name, param in m2.named_parameters():
+        #     if param.grad is not None and "qy_z1_logits" in name:
+        #         print(f"Grad {name}: {param.grad.abs().mean().item():.6f}")
 
 
     loss_dict['train_loss'].append(epoch_loss / len(train_loader))

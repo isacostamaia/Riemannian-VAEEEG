@@ -1,4 +1,7 @@
 #%%
+%load_ext autoreload
+%autoreload 2
+
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -30,7 +33,7 @@ import sklearn
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, balanced_accuracy_score
 from umap import UMAP
-
+import geoopt
 
 from moabb.datasets import BI2013a
 from moabb.paradigms import P300
@@ -128,24 +131,35 @@ if __name__ == "__main__":
              **m1_params).to(m1_params["device"])
     
     m2 = VAEM2(**m2_params).to(m2_params["device"])
-    
+
     #give increased lr to batch norm params (\nu_\phi) and classif head
     #raw_std parameters (\nu_\phi)
     raw_std_params = [layer.raw_std for layer in m1.spd_bn_layers.values()]
+    rot_mat_params = [layer.rot_mat for layer in m1.spd_bn_layers.values()]
     #classif head
     # cls_params = list(m2.qy_z1_logits.parameters())
-    #fastly updated params
-    fast_up_params = raw_std_params
 
-    #other parameters
+    #euclidean fastly updated params
+    euc_fast_up_params = raw_std_params
+
+    #riemannian params
+    riem_params = rot_mat_params
+
+    #all net parameters
     all_params = list(m1.parameters()) + list(m2.parameters())
-    other_params = [p for p in all_params if all(id(p) != id(rp) for rp in fast_up_params)]
 
-    #optimizer with two groups
+    #euclidean regular params (not fast) == all \ (eu_fast U riem)
+    euc_reg_params = [p for p in all_params if all(id(p) != id(rp) for rp in euc_fast_up_params+riem_params)]
+
+    #euclidean optimizer with two groups
     optimizer = torch.optim.Adam([
-        {'params': other_params, 'lr': optimizer_params["learning_rate"]},
-        {'params': fast_up_params, 'lr': optimizer_params["learning_rate"] * 100}  #bigger LR
+        {'params': euc_reg_params, 'lr': optimizer_params["learning_rate"]},
+        {'params': euc_fast_up_params, 'lr': optimizer_params["learning_rate"] * 100}  #bigger LR
     ])
+
+    #riemannian optimizer
+    optimizer_riem = geoopt.optim.RiemannianAdam(riem_params, lr=optimizer_params["learning_rate"]*10)
+
 
     #loss dictionary
     loss_dict = {'train_loss': [], 
@@ -157,7 +171,7 @@ if __name__ == "__main__":
     #Training loop
     start = time.time()
     for epoch in range(m1_params["num_epochs"]):
-        train_m1m2(m1, m2, train_loader, exp_params["beta"][epoch], exp_params["alpha"], epoch, loss_dict, optimizer)
+        train_m1m2(m1, m2, train_loader, exp_params["beta"][epoch], exp_params["alpha"], epoch, loss_dict, optimizer, optimizer_riem)
     end = time.time()
     exp_params["training_time"] = end - start
 
