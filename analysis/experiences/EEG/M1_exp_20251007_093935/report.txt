@@ -1,0 +1,43 @@
+Training params: 
+{'exp_params': {'seed': 0, 'db_name': 'EEG', 'alpha': 1, 'beta': array([0.        , 0.26666667, 0.53333333, 0.8       , 1.        ,
+       1.        , 1.        , 0.        , 0.26666667, 0.53333333,
+       0.8       , 1.        , 1.        , 1.        , 1.        ,
+       0.        , 0.26666667, 0.53333333, 0.8       , 1.        ,
+       1.        , 1.        , 0.        , 0.26666667, 0.53333333,
+       0.8       , 1.        , 1.        , 1.        , 1.        ]), 'training_time': 169.03564977645874}, 'm1_params': {'num_epochs': 30, 'hidden_dim': 8, 'device': device(type='cuda')}, 'optimizer_params': {'learning_rate': 0.0001}, 'dataloader_params': {'batch_size': 45}, 'xVar_params': {'distribution': <class 'utils.distributions.RiemannianNormal'>, 'shape': (32, 32), 'center_at': tensor([[1., 0., 0.,  ..., 0., 0., 0.],
+        [0., 1., 0.,  ..., 0., 0., 0.],
+        [0., 0., 1.,  ..., 0., 0., 0.],
+        ...,
+        [0., 0., 0.,  ..., 1., 0., 0.],
+        [0., 0., 0.,  ..., 0., 1., 0.],
+        [0., 0., 0.,  ..., 0., 0., 1.]]), 'min_eigenval': 1e-06}, 'z1Var_params': {'distribution': 'EucGaussian', 'shape': 4, 'center_at': None, 'batchNorm': None}}
+
+
+
+Classification using linear probe on M1 train embeddings (and testing on test set)
+Confusion Matrix: 
+[[1691    0]
+ [ 322    0]]
+
+
+              precision    recall  f1-score   support
+
+   NonTarget       0.84      1.00      0.91      1691
+      Target       0.00      0.00      0.00       322
+
+    accuracy                           0.84      2013
+   macro avg       0.42      0.50      0.46      2013
+weighted avg       0.71      0.84      0.77      2013
+
+Balanced Accuracy:  0.5
+
+
+
+Kernel 2-samples test:
+blocks of size= 5
+result: 1, 
+ acceptance/test: 0.20124014155637157, 
+ test_stat: 3362942900170218.5, acceptance; 676759105276249.5, upper: 16409997785655285.75537165484079300016413119978383176354845016452814036913930157793771608671575054809
+
+
+
