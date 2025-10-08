@@ -10,18 +10,19 @@ import matplotlib.pyplot as plt; plt.rcParams['figure.dpi'] = 200
 from umap import UMAP
 
 class VariationalEncoder(nn.Module):
-    def __init__(self, latent_dims):
+    def __init__(self, latent_dims, x_shape):
         super(VariationalEncoder, self).__init__()
-        self.linear1 = nn.Linear(784, 512)
+        self.linear1 = nn.Linear(x_shape[-1]*x_shape[-2], 512)
         self.linear2 = nn.Linear(512, latent_dims)
         self.linear3 = nn.Linear(512, latent_dims)
 
         self.N = torch.distributions.Normal(0, 1)
-        self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
-        self.N.scale = self.N.scale.cuda()
+
         self.kl = 0
 
     def forward(self, x):
+        self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
+        self.N.scale = self.N.scale.cuda()
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.linear1(x))
         mu =  self.linear2(x)
@@ -31,22 +32,23 @@ class VariationalEncoder(nn.Module):
         return z
     
 class Decoder(nn.Module):
-    def __init__(self, latent_dims):
+    def __init__(self, latent_dims, x_shape):
         super(Decoder, self).__init__()
+        self.x_shape = x_shape
         self.linear1 = nn.Linear(latent_dims, 512)
-        self.linear2 = nn.Linear(512, 784)
+        self.linear2 = nn.Linear(512, x_shape[-1]*x_shape[-2])
         self.x_hat = 0
 
     def forward(self, z):
         z = F.relu(self.linear1(z))
         z = torch.sigmoid(self.linear2(z)) #modify later when data is non-binary
-        self.x_hat = z.reshape((-1, 1, 28, 28))
+        self.x_hat = z.reshape((-1, 1, self.x_shape[-2], self.x_shape[-1]))
     
 class VariationalAutoencoder(nn.Module):
-    def __init__(self, latent_dims, pred_dim):
+    def __init__(self, latent_dims, x_shape, pred_dim):
         super(VariationalAutoencoder, self).__init__()
-        self.encoder = VariationalEncoder(latent_dims)
-        self.decoder = Decoder(latent_dims)
+        self.encoder = VariationalEncoder(latent_dims, x_shape)
+        self.decoder = Decoder(latent_dims, x_shape)
         self.pred_head = nn.Linear(latent_dims, pred_dim)
 
 
@@ -120,37 +122,38 @@ def evaluate(model, test_data, device):
 
 
 
+if __name__ == "__main__":
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    latent_dims = 2
 
-latent_dims = 2
+    class MNISTRegression(torch.utils.data.Dataset):
+        def __init__(self, train=True):
+            self.data = torchvision.datasets.MNIST(
+                './data',
+                train=train,
+                transform=torchvision.transforms.ToTensor(),
+                download=True
+            )
+        def __len__(self):
+            return len(self.data)
+        def __getitem__(self, idx):
+            x, _ = self.data[idx]
+            y = x.mean()  # average brightness
+            return x, y
 
-class MNISTRegression(torch.utils.data.Dataset):
-    def __init__(self, train=True):
-        self.data = torchvision.datasets.MNIST(
-            './data',
-            train=train,
-            transform=torchvision.transforms.ToTensor(),
-            download=True
-        )
-    def __len__(self):
-        return len(self.data)
-    def __getitem__(self, idx):
-        x, _ = self.data[idx]
-        y = x.mean()  # average brightness
-        return x, y
+    data = torch.utils.data.DataLoader(MNISTRegression(train=True), batch_size=128, shuffle=True)
+    test_data  = torch.utils.data.DataLoader(MNISTRegression(train=False), batch_size=128)
 
-data = torch.utils.data.DataLoader(MNISTRegression(train=True), batch_size=128, shuffle=True)
-test_data  = torch.utils.data.DataLoader(MNISTRegression(train=False), batch_size=128)
-
-n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
-vae = VariationalAutoencoder(latent_dims, n_targets).to(device) # GPU
-vae = train(vae, data, device)
-plot_latent(vae, data)
-plt.show()
-plt.close()
-# plot_reconstructed(vae, r0=(-3, 3), r1=(-3, 3))
-test_acc = evaluate(vae, test_data, device)
+    n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
+    x_shape = (28,28)
+    vae = VariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+    vae = train(vae, data, device)
+    plot_latent(vae, data)
+    plt.show()
+    plt.close()
+    # plot_reconstructed(vae, r0=(-3, 3), r1=(-3, 3))
+    test_acc = evaluate(vae, test_data, device)
 
 
 
