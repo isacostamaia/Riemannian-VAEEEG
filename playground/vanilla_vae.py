@@ -95,7 +95,7 @@ def plot_latent(model, data, num_batches=100):
         all_z = UMAP(n_components=2, init='random', random_state=0).fit_transform(all_z)
     plt.scatter(all_z[:, 0], all_z[:, 1], c=all_y, cmap='tab10')
     plt.colorbar()
-    plt.title("Latente space (projection) colored by regression target value")
+    plt.title("Latent space (projection) colored by regression target value")
 
 
 def plot_reconstructed(model, r0=(-5, 10), r1=(-10, 5), n=12):
@@ -120,8 +120,9 @@ def evaluate(model, test_data, device):
             y = y.to(device)
             pred = model(x)
             mse += F.mse_loss(pred, y, reduction='sum')
+            n_samples += pred.shape[0]
             
-    mse /= pred.shape[0]
+    mse /= n_samples
     print(f"test MSE: {mse}")
     return mse
 

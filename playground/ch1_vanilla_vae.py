@@ -6,7 +6,7 @@ import sys
 import os
 
 # Adjust this to point to the folder containing 'playground'
-project_root = "/localdata/costamai/Desktop/Work/Code/_RiemannianVAE_"
+project_root = "/localdata/costamai/Desktop/Work/Code/Riemannian-VAEEEG"
 sys.path.append(project_root)
 
 # Identify whether a CUDA-enabled GPU is available
@@ -174,18 +174,6 @@ def train(model, data, device, epochs=20):
         print(f"btrain loss: {loss.item()}, brecon_loss: {recon_loss.item()}, bkl loss: {model.encoder.kl}, bpred_loss:{pred_loss.item()}")
     return model
 
-def plot_latent(model, data, num_batches=100):
-    for i, s in enumerate(data):
-        z = model.encoder(s[0].to(device))
-        z = z.to('cpu').detach().numpy()
-        if z.shape[-1] > 2:
-            z = UMAP(n_components=2, init='random', random_state=0).fit_transform(z)
-        plt.scatter(z[:, 0], z[:, 1], c=s[1], cmap='tab10')
-        if i > num_batches:
-            plt.colorbar()
-            break
-    plt.title("Latent space (projection) colored by regression target value")
-
 def plot_latent_by_subject(model, loader):
     #get subject ids from metadata
     meta = loader.dataset.get_metadata()
@@ -201,11 +189,14 @@ def plot_latent_by_subject(model, loader):
 
     for batch_indices, s in zip(loader.batch_sampler, loader):
         x = s[0]
-        z = vae.encoder(x.to(device)).cpu().detach().numpy()
+        y = s[1]
+        z = model.encoder(x.to(device)).cpu().detach().numpy()
 
         batch_subjects = [subject_to_int[subjects[j]] for j in batch_indices]
         all_z.append(z)
         all_subj.append(batch_subjects)
+        # if len(all_z) > 10:
+        #     break
 
     all_z = np.concatenate(all_z)
     all_subj = np.concatenate(all_subj)
@@ -230,8 +221,9 @@ def evaluate(model, test_data, device):
             y = s[1].to(device).float()
             pred = model(x)
             mse += F.mse_loss(pred, y, reduction='sum')
+            n_samples += pred.shape[0]
             
-    mse /= pred.shape[0]
+    mse /= n_samples
     print(f"test MSE: {mse}")
     return mse
 
@@ -240,7 +232,7 @@ latent_dims = 4
 n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
 vae = VariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
 vae = train(vae, train_loader, device)
-plot_latent(vae, train_loader)
+plot_latent_by_subject(vae, train_loader)
 plt.show()
 plt.close()
 # plot_reconstructed(vae, r0=(-3, 3), r1=(-3, 3))
