@@ -42,7 +42,7 @@ class Decoder(nn.Module):
     def forward(self, z):
         z = F.relu(self.linear1(z))
         z = torch.sigmoid(self.linear2(z)) #modify later when data is non-binary
-        self.x_hat = z.reshape((-1, 1, self.x_shape[-2], self.x_shape[-1]))
+        self.x_hat = z.reshape((-1, self.x_shape[-2], self.x_shape[-1]))
     
 class VariationalAutoencoder(nn.Module):
     def __init__(self, latent_dims, x_shape, pred_dim):
@@ -63,7 +63,7 @@ def train(model, data, device, epochs=20):
     for epoch in range(epochs):
         for x, y in data:
             x = x.to(device) # GPU
-            y = y.to(device).unsqueeze(1)
+            y = y.to(device)
             opt.zero_grad()
             pred = model(x)
             recon_loss = ((x - model.decoder.x_hat)**2).sum()
@@ -81,16 +81,21 @@ def train(model, data, device, epochs=20):
     return model
 
 def plot_latent(model, data, num_batches=100):
+    all_z = []
+    all_y = []
     for i, (x, y) in enumerate(data):
         z = model.encoder(x.to(device))
         z = z.to('cpu').detach().numpy()
-        if z.shape[-1] > 2:
-            z = UMAP(n_components=2, init='random', random_state=0).fit_transform(z)
-        plt.scatter(z[:, 0], z[:, 1], c=y, cmap='tab10')
-        if i > num_batches:
-            plt.colorbar()
-            break
-    plt.title("regression target value")
+        all_z.append(z)
+        all_y.append(y)
+    all_z = np.concatenate(all_z)
+    all_y = np.concatenate(all_y)
+
+    if z.shape[-1] > 2:
+        all_z = UMAP(n_components=2, init='random', random_state=0).fit_transform(all_z)
+    plt.scatter(all_z[:, 0], all_z[:, 1], c=all_y, cmap='tab10')
+    plt.colorbar()
+    plt.title("Latente space (projection) colored by regression target value")
 
 
 def plot_reconstructed(model, r0=(-5, 10), r1=(-10, 5), n=12):
@@ -112,7 +117,7 @@ def evaluate(model, test_data, device):
     with torch.no_grad():
         for x, y in test_data:
             x = x.to(device)
-            y = y.to(device).unsqueeze(1)
+            y = y.to(device)
             pred = model(x)
             mse += F.mse_loss(pred, y, reduction='sum')
             
@@ -138,9 +143,11 @@ if __name__ == "__main__":
         def __len__(self):
             return len(self.data)
         def __getitem__(self, idx):
-            x, _ = self.data[idx]
-            y = x.mean()  # average brightness
+            x, _ = self.data[idx]      # (1, 28, 28)
+            x = x.squeeze(0)           # (28, 28)
+            y = x.mean().unsqueeze(0)  # (1,)
             return x, y
+
 
     data = torch.utils.data.DataLoader(MNISTRegression(train=True), batch_size=128, shuffle=True)
     test_data  = torch.utils.data.DataLoader(MNISTRegression(train=False), batch_size=128)

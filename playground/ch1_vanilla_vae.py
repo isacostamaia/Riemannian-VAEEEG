@@ -10,6 +10,7 @@ project_root = "/localdata/costamai/Desktop/Work/Code/_RiemannianVAE_"
 sys.path.append(project_root)
 
 # Identify whether a CUDA-enabled GPU is available
+import numpy as np
 import torch
 from pathlib import Path
 from eegdash.dataset import EEGChallengeDataset
@@ -183,7 +184,41 @@ def plot_latent(model, data, num_batches=100):
         if i > num_batches:
             plt.colorbar()
             break
-    plt.title("Latent space projection colored by regression target value")
+    plt.title("Latent space (projection) colored by regression target value")
+
+def plot_latent_by_subject(model, loader):
+    #get subject ids from metadata
+    meta = loader.dataset.get_metadata()
+    subjects = np.array(meta["subject"])
+    unique_subjects = np.unique(subjects)
+    subject_to_int = {s: i for i, s in enumerate(unique_subjects)}
+
+    # choose a colored colormap
+    cmap = plt.cm.get_cmap("tab20", len(unique_subjects))
+
+    # collect latent embeddings for a few batches
+    all_z, all_subj = [], []
+
+    for batch_indices, s in zip(loader.batch_sampler, loader):
+        x = s[0]
+        z = vae.encoder(x.to(device)).cpu().detach().numpy()
+
+        batch_subjects = [subject_to_int[subjects[j]] for j in batch_indices]
+        all_z.append(z)
+        all_subj.append(batch_subjects)
+
+    all_z = np.concatenate(all_z)
+    all_subj = np.concatenate(all_subj)
+
+    if z.shape[-1] > 2:
+        all_z = UMAP(n_components=2, random_state=0).fit_transform(all_z)
+
+    plt.figure(figsize=(6,5))
+    sc = plt.scatter(all_z[:,0], all_z[:,1], c=all_subj, cmap=cmap, alpha=0.8)
+    cbar = plt.colorbar(sc, ticks=range(len(unique_subjects)))
+    cbar.ax.set_yticklabels(unique_subjects)
+    plt.title("Latent space by subject")
+    plt.show()
 
 def evaluate(model, test_data, device):
     model.eval()
