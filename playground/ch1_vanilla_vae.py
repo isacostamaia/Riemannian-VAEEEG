@@ -8,7 +8,6 @@ import os
 # Adjust this to point to the folder containing 'playground'
 project_root = "/localdata/costamai/Desktop/Work/Code/_RiemannianVAE_"
 sys.path.append(project_root)
-from playground.vanilla_vae import VariationalAutoencoder
 
 # Identify whether a CUDA-enabled GPU is available
 import torch
@@ -148,8 +147,11 @@ train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_wo
 valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
+x_shape = (129,200)
 
-def train(model, data, device, epochs=50):
+from playground.vanilla_vae import VariationalAutoencoder
+
+def train(model, data, device, epochs=20):
     opt = torch.optim.Adam(model.parameters())
     for epoch in range(epochs):
         for s in data:
@@ -173,7 +175,7 @@ def train(model, data, device, epochs=50):
 
 def plot_latent(model, data, num_batches=100):
     for i, s in enumerate(data):
-        z = model.encoder(s[0].to(device).float())
+        z = model.encoder(s[0].to(device))
         z = z.to('cpu').detach().numpy()
         if z.shape[-1] > 2:
             z = UMAP(n_components=2, init='random', random_state=0).fit_transform(z)
@@ -181,18 +183,7 @@ def plot_latent(model, data, num_batches=100):
         if i > num_batches:
             plt.colorbar()
             break
-
-def plot_reconstructed(model, r0=(-5, 10), r1=(-10, 5), n=12):
-    #only for latent_dim =2
-    w = 28
-    img = np.zeros((n*w, n*w))
-    for i, y in enumerate(np.linspace(*r1, n)):
-        for j, x in enumerate(np.linspace(*r0, n)):
-            z = torch.Tensor([[x, y]]).to(device)
-            x_hat = model.decoder(z)
-            x_hat = x_hat.reshape(28, 28).to('cpu').detach().numpy()
-            img[(n-1-i)*w:(n-1-i+1)*w, j*w:(j+1)*w] = x_hat
-    plt.imshow(img, extent=[*r0, *r1])
+    plt.title("Latent space projection colored by regression target value")
 
 def evaluate(model, test_data, device):
     model.eval()
@@ -206,17 +197,78 @@ def evaluate(model, test_data, device):
             mse += F.mse_loss(pred, y, reduction='sum')
             
     mse /= pred.shape[0]
-    print(f"MSE: {mse}")
+    print(f"test MSE: {mse}")
     return mse
 
 
 latent_dims = 4
 n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
-vae = VariationalAutoencoder(latent_dims, n_targets).to(device) # GPU
+vae = VariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
 vae = train(vae, train_loader, device)
 plot_latent(vae, train_loader)
 plt.show()
 plt.close()
 # plot_reconstructed(vae, r0=(-3, 3), r1=(-3, 3))
 test_acc = evaluate(vae, test_loader, device)
+
+
+# def train(model, data, device, epochs=50):
+#     opt = torch.optim.Adam(model.parameters())
+#     for epoch in range(epochs):
+#         for s in data:
+#             x = s[0].to(device).float() # GPU
+#             y = s[1].to(device).float()
+#             opt.zero_grad()
+#             pred = model(x)
+#             recon_loss = ((x - model.decoder.x_hat)**2).sum()
+#             # pred_loss = F.cross_entropy(pred, y, reduction='sum')
+#             pred_loss = F.mse_loss(pred, y, reduction='sum')
+#             loss = recon_loss + model.encoder.kl + pred_loss
+#             loss.backward()
+#             opt.step()
+
+#             # #batch acc
+#             # preds = pred.argmax(dim=-1)
+#             # bacc = (preds == y).sum()/preds.shape[0]
+
+#         print(f"btrain loss: {loss.item()}, brecon_loss: {recon_loss.item()}, bkl loss: {model.encoder.kl}, bpred_loss:{pred_loss.item()}")
+#     return model
+
+# def plot_latent(model, data, num_batches=100):
+#     for i, s in enumerate(data):
+#         z = model.encoder(s[0].to(device).float())
+#         z = z.to('cpu').detach().numpy()
+#         if z.shape[-1] > 2:
+#             z = UMAP(n_components=2, init='random', random_state=0).fit_transform(z)
+#         plt.scatter(z[:, 0], z[:, 1], c=s[1], cmap='tab10')
+#         if i > num_batches:
+#             plt.colorbar()
+#             break
+
+
+# def evaluate(model, test_data, device):
+#     model.eval()
+#     mse = 0
+#     n_samples = 0
+#     with torch.no_grad():
+#         for s in test_data:
+#             x = s[0].to(device).float()
+#             y = s[1].to(device).float()
+#             pred = model(x)
+#             mse += F.mse_loss(pred, y, reduction='sum')
+            
+#     mse /= pred.shape[0]
+#     print(f"MSE: {mse}")
+#     return mse
+
+
+# latent_dims = 4
+# n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
+# vae = VariationalAutoencoder(latent_dims, n_targets).to(device) # GPU
+# vae = train(vae, train_loader, device)
+# plot_latent(vae, train_loader)
+# plt.show()
+# plt.close()
+# # plot_reconstructed(vae, r0=(-3, 3), r1=(-3, 3))
+# test_acc = evaluate(vae, test_loader, device)
 # %%
