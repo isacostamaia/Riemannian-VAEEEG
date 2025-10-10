@@ -20,12 +20,22 @@ conda activate rveaeeeg
 ```sh
 python train_scripts/run_train_m1.py
 ```
+
+
 Stacking of Riemannian VAE (M1) + Supervised VAE (M2) as described in [Kingma et al., 2014](https://doi.org/10.48550/arXiv.1406.5298).
 
-```sh
-python train_scripts/run_train_m1m2.py
+Train
 
+```sh
+python scripts/run_train_m1m2.py --config configs/m1m2_baseline_mi_zhou.yaml
 ```
+
+Eval
+
+```sh
+python scripts/eval_m1m2.py  --config configs/m1m2_baseline.yaml   --exp_path analysis/experiences/EEG/[EXP_NAME]
+```
+
 
 Stacking of Riemannian VAE (M1) + Supervised VAE (M2) as described in [Joy et al., 2020](https://doi.org/10.48550/arXiv.2006.10102).
 
