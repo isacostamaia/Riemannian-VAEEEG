@@ -1,0 +1,90 @@
+# ========================
+# Global experiment setup
+# ========================
+seed: 0
+exp_name: "m1m2_baseline"
+exp_prefix: "M1+M2"
+
+# ========================
+# Experiment-level params
+# ========================
+experiment:
+  db_name: "EEG"
+  alpha: 1.0
+  beta_schedule:
+    type: "frange_cycle_linear"
+    n_iter: 30
+    stop: 1.0
+
+# ========================
+# Model params
+# ========================
+model:
+  m1:
+    num_epochs: 30
+    hidden_dim: 8
+    device: "cuda"
+    spd_args:
+      learn_rot: false
+  m2:
+    z1_dim: 4
+    z2_dim: 4
+    y_dim: 2
+    hidden_dim: 8
+    device: "cuda"
+
+# ========================
+# Variables
+# ========================
+variables:
+  xVar:
+    class: "SPDVar"
+    params:
+      distribution: "RiemannianNormal"
+      shape: null      # infer from data if null
+      center_at: "eye"
+      min_eigenval: 1e-6
+
+  z1Var:
+    class: "EucVecVar"
+    params:
+      distribution: "EucGaussian"
+      shape: 4
+      batchNorm: null
+      center_at: null
+
+# ========================
+# Data
+# ========================
+dataloader:
+  class: "get_eeg_dataloader_treated_by_domain"
+  params:
+    dataset:
+      name: "BI2013a"
+      paradigm: "P300"
+    batch_size: 45
+    min_batch_size: 5
+    transform:
+      xdawn_filters: 0
+      normalize: false
+      estimator: "lwf"
+      epsilon: 1.1618
+    use_cache: true
+    cache_dir: "datasets/cache"
+
+# ========================
+# Optimization
+# ========================
+optimizer:
+  base_lr: 1e-4
+  fast_lr_mult: 100
+  riem_lr_mult: 0.1
+
+# ========================
+# Logging and saving
+# ========================
+logging:
+  save_path: "analysis/experiences/EEG"
+  save_model: true
+  plot_loss: true
+  save_report: true

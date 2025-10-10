@@ -66,11 +66,6 @@ def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer, o
         m2_varparams = m2(m1_varparams["z1_mean_m1"], y)
 
         l1, diag1  = m1.unsupervised_loss(m1_varparams, x, dom_id, beta)
-        
-        #debug
-        rv = m1.get_spd_bn(dom_id).running_var.clone().detach()
-        print("running_var mean, min, max:", rv.mean().item(), rv.min().item(), rv.max().item())
-
         l2, diag2 = m2.supervised_loss(m1_varparams["z1"], m1_varparams["z1_mean_m1"], y, m2_varparams, alpha)
 
         loss = l1+l2
@@ -78,9 +73,79 @@ def train_m1m2(m1, m2, train_loader, beta, alpha, epoch, loss_dict, optimizer, o
 
         loss.backward()
 
-        # for name, param in m2.named_parameters():
-        #     if param.grad is not None and "qy_z1_logits" in name:
-        #         print(f"Grad {name}: {param.grad.abs().mean().item():.6f}")
+        # #debug
+        # rv = m1.get_spd_bn(dom_id).running_var.clone().detach()
+        # print("running_var mean, min, max:", rv.mean().item(), rv.min().item(), rv.max().item())
+        # for name, param in m1.spd_bn_layers.named_parameters():
+        #     print("oi")
+        #     if "rot_mat" in name: 
+        #         if param.grad is not None:
+        #             print(name, param.grad.norm().item())
+        #         else:
+        #             print("rot_mat grad is None")
+
+        # for key, layer in m1.spd_bn_layers.items():
+        #     if hasattr(layer, "rot_mat"):
+        #         rot = layer.rot_mat
+        #         print(f"\nLayer {key}:")
+        #         print(f"  type(rot_mat) = {type(rot)}")
+        #         print(f"  requires_grad = {rot.requires_grad}")
+        #         print(f"  grad is None? = {rot.grad is None}")
+        #         if rot.grad is not None:
+        #             print(f"  grad norm = {rot.grad.norm().item():.6e}")
+        #         else:
+        #             # Try forcing autograd check
+        #             if rot.grad_fn is None:
+        #                 print("  rot_mat has no grad_fn (detached from graph).")
+        #             else:
+        #                 print("  rot_mat has grad_fn but grad not accumulated.")
+        #     if hasattr(layer, "raw_std"):
+        #         raw_std = layer.raw_std
+        #         print(f"\nLayer {key}:")
+        #         print(f"  type(raw_std) = {type(raw_std)}")
+        #         print(f"  requires_grad = {raw_std.requires_grad}")
+        #         print(f"  grad is None? = {raw_std.grad is None}")
+        #         if rot.grad is not None:
+        #             print(f"  grad norm = {raw_std.grad.norm().item():.6e}")
+        #         else:
+        #             # Try forcing autograd check
+        #             if raw_std.grad_fn is None:
+        #                 print("  raw_std has no grad_fn (detached from graph).")
+        #             else:
+        #                 print("  raw_std has grad_fn but grad not accumulated.")         
+        # 
+        print("=== Debugging rot_mat path ===")
+        for key, layer in m1.spd_bn_layers.items():
+            if hasattr(layer, "rot_mat"):
+                rot = layer.rot_mat
+                print(f"\nLayer {key}: rot id = {id(rot)}")
+                print(f"  rot.requires_grad = {rot.requires_grad}")
+                print(f"  rot.grad is None? = {rot.grad is None}")
+                # show whether rot is listed among model parameters
+                is_param = any(rot is p for p in m1.parameters())
+                print(f"  rot in m1.parameters()? {is_param}")
+                # is rot passed to optimizer_riem?
+                in_opt = any(rot is p for group in optimizer_riem.param_groups for p in group['params'])
+                print(f"  rot in optimizer_riem.param_groups? {in_opt}")
+                # if grad exists, show norm
+                if rot.grad is not None:
+                    print("  grad norm:", rot.grad.norm().item())
+                # if no grad, try to find a tensor in the forward that *does* depend on rot
+                try:
+                    # ask layer for an example forward output (without detach)
+                    X_sample = getattr(layer, "last_input", None)
+                    if X_sample is None:
+                        print("  layer.last_input not present (consider storing inside forward for debugging).")
+                    else:
+                        out = layer(X_sample, epoch)
+                        print("  forward(out).requires_grad =", out.requires_grad)
+                        print("  forward(out).grad_fn =", type(out.grad_fn))
+                except Exception as e:
+                    print("  couldn't run extra forward check:", e)
+
+        for name, param in m2.named_parameters():
+            if param.grad is not None and "qy_z1_logits" in name:
+                print(f"Grad {name}: {param.grad.abs().mean().item():.6f}")
 
         optimizer.step()
         optimizer_riem.step()

@@ -7,7 +7,7 @@ from models.modules.spdbn import SPDBatchNorm
 
 class VAE(nn.Module):
 
-    def __init__(self, xVar, zVar, domain_keys, num_epochs, pz="EucStdGaussian", hidden_dim=16, device="cpu"):        
+    def __init__(self, xVar, zVar, domain_keys, num_epochs, pz="EucStdGaussian", hidden_dim=16, device="cpu", spd_args=None):        
         super(VAE, self).__init__()
 
         #these objects contain infos about observation and latent variables
@@ -47,7 +47,8 @@ class VAE(nn.Module):
             nn.LeakyReLU(0.2)
             )
         
-        self.init_spd_bn_domains(domain_keys=domain_keys)
+        self.spd_args = spd_args
+        self.init_spd_bn_domains(domain_keys=domain_keys, spd_args=self.spd_args)
 
     def encode(self, x, domain_id, epoch=None):
         if torch.isnan(x).any() or torch.isinf(x).any():
@@ -135,11 +136,12 @@ class VAE(nn.Module):
             self.spd_bn_layers[key] = SPDBatchNorm(
                 shape=self.xVar.shape,
                 num_epochs=self.num_epochs,
-                device=self.device
+                device=self.device,
+                **self.spd_args
             )
         return self.spd_bn_layers[key]
     
-    def init_spd_bn_domains(self, domain_keys):
+    def init_spd_bn_domains(self, domain_keys, spd_args=None):
         """
         domain_keys is a list with all the domain_ids that will be seen during training.
         """
@@ -147,7 +149,8 @@ class VAE(nn.Module):
             self.spd_bn_layers[key] = SPDBatchNorm(shape=self.xVar.shape,
                                                 num_epochs=self.num_epochs,
                                                 learn_std=True,
-                                                device=self.device)
+                                                device=self.device,
+                                                **spd_args)
 
 
     def unsupervised_loss(self, m1_varparams, x, dom_id, beta):
@@ -181,8 +184,7 @@ class VAE(nn.Module):
 #### Version that learns logvar in decoder (stochastic decoder)
 
 class VAE_sd(nn.Module):
-
-    def __init__(self, xVar, zVar, domain_keys, num_epochs, pz="EucStdGaussian", hidden_dim=16, device="cpu"):        
+    def __init__(self, xVar, zVar, domain_keys, num_epochs, pz="EucStdGaussian", hidden_dim=16, device="cpu", spd_args=None):        
         super(VAE, self).__init__()
 
         #these objects contain infos about observation and latent variables
@@ -223,7 +225,8 @@ class VAE_sd(nn.Module):
         self.logvar_theta_zi_layer = nn.Linear(hidden_dim, 1)
 
         #initialize SPDBN layers by domain
-        self.init_spd_bn_domains(domain_keys=domain_keys)
+        self.spd_args=spd_args
+        self.init_spd_bn_domains(domain_keys=domain_keys, spd_args=self.spd_args)
 
     def encode(self, x, domain_id, epoch=None):
         if torch.isnan(x).any() or torch.isinf(x).any():
@@ -315,7 +318,8 @@ class VAE_sd(nn.Module):
             self.spd_bn_layers[key] = SPDBatchNorm(
                 shape=self.xVar.shape,
                 num_epochs=self.num_epochs,
-                device=self.device
+                device=self.device,
+                **self.spd_args
             )
         return self.spd_bn_layers[key]
     
@@ -327,7 +331,8 @@ class VAE_sd(nn.Module):
             self.spd_bn_layers[key] = SPDBatchNorm(shape=self.xVar.shape,
                                                 num_epochs=self.num_epochs,
                                                 learn_std=True,
-                                                device=self.device)
+                                                device=self.device,
+                                                **self.spd_args)
 
 
     def unsupervised_loss(self, m1_varparams, x, dom_id, beta):

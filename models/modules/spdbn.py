@@ -9,7 +9,7 @@ from utils.manifold import SPDManifold
 class SPDBatchNorm(nn.Module):
     def __init__(self, shape, num_epochs, karcher_steps=1, gamma_test=0.1,
                  mean = None, std = None, learn_mean = False, learn_std = True, 
-                 learn_rot = False,
+                 learn_rot = True,
                  eps=1e-5, device = "cpu"):
         super().__init__()
         self.shape = shape
@@ -76,6 +76,8 @@ class SPDBatchNorm(nn.Module):
         if self.learn_rot:
             self.rot_mat = ManifoldParameter(self.rot_mat_manifold.origin(shape[-1], shape[-1], device=device), 
                                              manifold=self.rot_mat_manifold)
+            self.register_parameter('rot_mat', self.rot_mat)
+
         
         else:
             self.rot_mat = self.rot_mat_manifold.origin(shape,device=device)
@@ -86,18 +88,20 @@ class SPDBatchNorm(nn.Module):
 
             #estimate and update train running mean G_k
             Bk = self.manifold.karcher_flow(X)  #Compute batch mean B_k
-            self.running_mean =  self.manifold.interpolate(A = self.running_mean, B = Bk, gamma=self.gamma[epoch])
+            gamma_t = torch.tensor(self.gamma[epoch], device=X.device, dtype=X.dtype)
+            self.running_mean =  self.manifold.interpolate(A = self.running_mean, B = Bk, gamma=gamma_t)
 
             #estimate and update train running var nu²_k :  
             var_Bk = (self.manifold.squared_distance(self.running_mean.expand_as(X), X)).mean() #single scalar
-            self.running_var = (1-self.gamma[epoch])*self.running_var + self.gamma[epoch]* var_Bk
+            self.running_var = (1-gamma_t)*self.running_var + gamma_t* var_Bk
 
             #estimate and update test running mean
-            self.running_mean_test = self.manifold.interpolate(A=self.running_mean_test, B=Bk, gamma=self.gamma_test)
+            gamma_t_test = torch.tensor(self.gamma_test, device=X.device, dtype=X.dtype)
+            self.running_mean_test = self.manifold.interpolate(A=self.running_mean_test, B=Bk, gamma=gamma_t_test)
 
             #estimate and update test running var
             var_Bk_test = (self.manifold.squared_distance(self.running_mean_test.expand_as(X), X)).mean() #single scalar
-            self.running_var_test = (1-self.gamma_test)*self.running_var_test + self.gamma_test*var_Bk_test
+            self.running_var_test = (1-gamma_t_test)*self.running_var_test + gamma_t_test*var_Bk_test
 
             #use train running mean and train running var
             rm = self.running_mean.clone()
@@ -121,6 +125,7 @@ class SPDBatchNorm(nn.Module):
 
         Xn = self.manifold.parallel_transp_to_id(fromA=fromA_batch, transportX=X) #transport to Id
         Xn = self.manifold._matrix_power(Xn, alpha) #rescale by std dev rate
+        print("Xn requires_grad before rot_mat?", Xn.requires_grad)
         if self.learn_rot:
             Xn = torch.transpose(self.rot_mat, dim0=-2, dim1=-1) @ Xn @ self.rot_mat
 
