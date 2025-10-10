@@ -185,6 +185,17 @@ def get_dataloader(cfg):
             **{k: v for k, v in cfg.items() if k not in ["dataset", "transform", "use_cache", "cache_dir"]},
             **transform,
         )
+
+    elif ds_cfg["name"] == "Zhou2016":
+        from moabb.datasets import Zhou2016
+        from moabb.paradigms import MotorImagery
+
+        train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
+            moabb_dataset=Zhou2016(),
+            paradigm=MotorImagery(),
+            **{k: v for k, v in cfg.items() if k not in ["dataset", "transform", "use_cache", "cache_dir"]},
+            **transform,
+        )
     else:
         raise NotImplementedError(f"Dataset {ds_cfg['name']} not supported yet.")
 

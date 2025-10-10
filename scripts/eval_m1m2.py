@@ -57,6 +57,9 @@ if __name__ == "__main__":
     # 3 - Infer shapes and build variables
     data_sample = next(iter(train_loader))
     n = data_sample[0][0].shape[-1]
+    target_names = list(train_loader.dataset.classes)
+    n_classes = len(target_names)
+
     from utils.distributions import RiemannianNormal
 
     xVar = SPDVar(
@@ -75,7 +78,7 @@ if __name__ == "__main__":
     # 4 - Load models
     domain_keys = train_loader.dataset.metadata.domain_id.unique()
     m1 = VAE(xVar=xVar, zVar=z1Var, domain_keys=domain_keys, **m1_params)
-    m2 = VAEM2(**m2_params)
+    m2 = VAEM2(y_dim=n_classes, **m2_params)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     m1, m2 = m1.to(device), m2.to(device)
 
@@ -112,7 +115,7 @@ if __name__ == "__main__":
         cm = sklearn.metrics.confusion_matrix(labels_test, preds_test)
         print("Classification on test set (M2 predictions):", file=f)
         print(cm, file=f)
-        print(classification_report(labels_test, preds_test, target_names=["NonTarget", "Target"]), file=f)
+        print(classification_report(labels_test, preds_test, target_names=target_names), file=f)
         print("Balanced Accuracy:", balanced_accuracy_score(labels_test, preds_test), file=f)
         print("\n", file=f)
 
@@ -124,7 +127,7 @@ if __name__ == "__main__":
     with open(os.path.join(exp_path, 'report.txt'), "a") as f:
         print("Linear Probe on M1 embeddings:", file=f)
         print(cm, file=f)
-        print(classification_report(labels_test, preds_test_lp, target_names=["NonTarget", "Target"]), file=f)
+        print(classification_report(labels_test, preds_test_lp, target_names=target_names), file=f)
         print("Balanced Accuracy:", balanced_accuracy_score(labels_test, preds_test_lp), file=f)
         print("\n", file=f)
 
@@ -136,13 +139,12 @@ if __name__ == "__main__":
                 rot = layer.rot_mat.detach()
                 dist = torch.norm(rot - torch.eye(rot.shape[-1], device=rot.device), p='fro')
                 print(f"{dom_key}: Frobenius distance from I = {dist.item():.6f}", file=f)
-                
+        print("\n", file=f)
         print("νϕ matrices stats:", file=f) 
         for dom_key, layer in m1.spd_bn_layers.items():
             if hasattr(layer, "raw_std"):
                 std = torch.nn.functional.softplus(layer.raw_std.detach()) + layer.min_std
                 print(f"{dom_key}: νϕ = {std.item():.6f}", file=f)
-            print("\n", file=f)
 
     #4 - betaprime kernel 2-samples test
     from analysis.eval_generation.betaprime_twosamples import betaprime, eff_kernel_test, gen_bblock_mats

@@ -29,7 +29,7 @@ class VAEM2(nn.Module):
     """
     Supervised VAE model as described in 
     """
-    def __init__(self, z1_dim, z2_dim, y_dim, hidden_dim, device="cpu"):
+    def __init__(self, z1_dim, z2_dim, y_dim, hidden_dim, class_weights = None, device="cpu"):
         super().__init__()
         self.z1_dim = z1_dim
         self.z2_dim = z2_dim
@@ -44,7 +44,9 @@ class VAEM2(nn.Module):
                                     )
 
         self.qy_z1_logits = nn.Linear(self.z1_dim, self.y_dim)
-        self.cls_loss_fct = nn.CrossEntropyLoss(weight=torch.Tensor([0.2, 0.8]).to(self.device), reduction='none')
+        if class_weights:
+            class_weights = torch.Tensor(class_weights).to(self.device)
+        self.cls_loss_fct = nn.CrossEntropyLoss(weight=class_weights, reduction='none')
         # self.cls_loss_fct = nn.CrossEntropyLoss(reduction='none')
 
         #encoder of z2
@@ -92,6 +94,11 @@ class VAEM2(nn.Module):
     
     def forward(self, z1, y): #for labeled case, we don't obtain y
         y_onehot = F.one_hot(y, num_classes=self.y_dim).float().to(self.device) #true y
+
+        print("y shape:", y.shape)
+        print("y unique values:", torch.unique(y))
+        print("expected num_classes:", self.y_dim)
+
         z2_mean, z2_logvar = self.encode_z2(z1, y_onehot)
         z2 = self.reparametrize(z2_mean, z2_logvar)
         z1_mean, z1_logvar = self.decode_z1(z2, y_onehot)

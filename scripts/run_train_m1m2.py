@@ -45,9 +45,11 @@ if __name__ == "__main__":
     train_loader, val_loader, test_loader, test_loader_off, ds_metadata = get_dataloader(dataloader_cfg)
 
 
-    #4 - infer shape and variables
+    #4 - infer shape, n_classes and variables
     data_sample = next(iter(train_loader))
     n = data_sample[0][0].shape[-1]
+    n_classes = len(train_loader.dataset.classes)
+
 
     xVar = build_var(var_cfgs["xVar"], inferred_shape=(n, n))
     z1Var = build_var(var_cfgs["z1Var"])
@@ -55,7 +57,7 @@ if __name__ == "__main__":
     #5 - instantiate models
     domain_keys = train_loader.dataset.metadata.domain_id.unique()
     m1 = VAE(xVar=xVar, zVar=z1Var, domain_keys=domain_keys, **m1_params)
-    m2 = VAEM2(**m2_params)
+    m2 = VAEM2(y_dim=n_classes,**m2_params)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     m1, m2 = m1.to(device), m2.to(device)
 
