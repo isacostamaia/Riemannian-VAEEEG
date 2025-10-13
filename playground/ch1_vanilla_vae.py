@@ -149,7 +149,7 @@ valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, num_w
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
 x_shape = (129,200)
-#%%
+
 # def train(model, data, device, epochs=20):
 #     opt = torch.optim.Adam(model.parameters())
 #     for epoch in range(epochs):
@@ -184,17 +184,18 @@ def plot_latent_by_subject(model, loader):
 
     # collect latent embeddings for a few batches
     all_z, all_subj = [], []
+    with torch.no_grad():
+        for batch_indices, s in zip(loader.batch_sampler, loader):
+            x = s[0]
+            y = s[1]
+            mu, z = model.encoder(x.to(device))
+            mu = mu.cpu().detach().numpy()
 
-    for batch_indices, s in zip(loader.batch_sampler, loader):
-        x = s[0]
-        y = s[1]
-        z = model.encoder(x.to(device)).cpu().detach().numpy()
-
-        batch_subjects = [subject_to_int[subjects[j]] for j in batch_indices]
-        all_z.append(z)
-        all_subj.append(batch_subjects)
-        # if len(all_z) > 10:
-        #     break
+            batch_subjects = [subject_to_int[subjects[j]] for j in batch_indices]
+            all_z.append(mu)
+            all_subj.append(batch_subjects)
+            # if len(all_z) > 10:
+            #     break
 
     all_z = np.concatenate(all_z)
     all_subj = np.concatenate(all_subj)
@@ -225,12 +226,16 @@ def plot_latent_by_subject(model, loader):
 #     print(f"test MSE: {mse}")
 #     return mse
 
-#%%
 from playground.vanilla_vae import VariationalAutoencoder
+from playground.eegnex_vae import EEGNeXVariationalAutoencoder
+from playground.higgs_vae import HiggsVariationalAutoencoder
 
-latent_dims = 4
+latent_dims = 45
 n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
-model = VariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+# model = VariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+model = EEGNeXVariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+# model = HiggsVariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+
 
 from typing import Optional
 import torch
@@ -268,6 +273,10 @@ def train_one_epoch(
         optimizer.zero_grad(set_to_none=True)
         preds = model(X)
         loss = loss_fn(preds, y)
+        recon_loss = ((X - model.decoder.x_hat)**2).sum()
+        regul_loss = model.encoder.kl
+        loss = loss + recon_loss + regul_loss
+
         loss.backward()
         optimizer.step()
 
@@ -393,6 +402,45 @@ for epoch in range(1, n_epochs + 1):
 
 if best_state is not None:
     model.load_state_dict(best_state)
+
+
+from sklearn.metrics import root_mean_squared_error as rmse
+@torch.no_grad()
+def test_model(
+    dataloader: DataLoader,
+    model: Module,
+    # loss_fn,
+    device,
+    print_batch_stats: bool = True,
+):
+    model.eval()
+    
+    n_batches = len(dataloader)
+
+    iterator = tqdm(
+        enumerate(dataloader),
+        total=n_batches,
+        disable=not print_batch_stats
+    )
+    preds_ = []
+    y_= []
+
+    for batch_idx, batch in iterator:
+        X, y = batch[0], batch[1]
+        X, y = X.to(device).float(), y.to(device).float()
+        # casting X to float32
+
+        preds = model(X)
+        preds_.append(preds.detach().cpu().numpy())
+        y_.append(y.detach().cpu().numpy())
+    preds_ = np.concatenate(preds_)
+    y_ = np.concatenate(y_)
+    score = rmse(y_, preds_) / np.std(y_)
+    print(f"Test score: {score:.6f}")
+    return score
+
+test_score = test_model(valid_loader, model, device)
+
 
 # %%
 plot_latent_by_subject(model, train_loader)

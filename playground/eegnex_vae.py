@@ -8,13 +8,20 @@ import torchvision
 import numpy as np
 import matplotlib.pyplot as plt; plt.rcParams['figure.dpi'] = 200
 from umap import UMAP
+from braindecode.models import EEGNeX
+
+
 
 class VariationalEncoder(nn.Module):
     def __init__(self, latent_dims, x_shape):
         super(VariationalEncoder, self).__init__()
-        self.linear1 = nn.Linear(x_shape[-1]*x_shape[-2], 512)
-        self.linear2 = nn.Linear(512, latent_dims)
-        self.linear3 = nn.Linear(512, latent_dims)
+        self.eegnex = EEGNeX(n_chans=x_shape[-2], # 129 channels
+                n_outputs=128, # 128 output for learning z mean and logsigma
+                n_times=x_shape[-1], #2 seconds
+                sfreq=100,      # sample frequency 100 Hz
+                )
+        self.linear2 = nn.Linear(128, latent_dims)
+        self.linear3 = nn.Linear(128, latent_dims)
 
         self.N = torch.distributions.Normal(0, 1)
 
@@ -23,14 +30,33 @@ class VariationalEncoder(nn.Module):
     def forward(self, x):
         self.N.loc = self.N.loc.cuda() #get sampling on the GPU
         self.N.scale = self.N.scale.cuda()
-        x = torch.flatten(x, start_dim=1)
-        x = F.relu(self.linear1(x))
+        # x = torch.flatten(x, start_dim=1)
+        # x = F.relu(self.linear1(x))
+        x = self.eegnex(x)
         mu =  self.linear2(x)
         sigma = torch.exp(self.linear3(x))
         z = mu + sigma*self.N.sample(mu.shape)
         self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
         return mu, z
     
+# class Decoder(nn.Module):
+#     def __init__(self, latent_dims, x_shape):
+#         super(Decoder, self).__init__()
+#         self.x_shape = x_shape
+#         self.linear1 = nn.Linear(latent_dims, 256)
+#         self.linear2 = nn.Linear(256, 512)
+#         self.linear3 = nn.Linear(512, 8192)
+#         self.linear4 = nn.Linear(8192, x_shape[-1]*x_shape[-2])
+#         self.x_hat = 0
+
+#     def forward(self, z):
+#         z = F.relu(self.linear1(z))
+#         # z = self.linear2(z) #data not bounded in [0,1]
+#         z = F.relu(self.linear2(z))
+#         z = F.relu(self.linear3(z))
+#         z = torch.sigmoid(self.linear4(z)) #modify later when data is non-binary
+#         self.x_hat = z.reshape((-1, self.x_shape[-2], self.x_shape[-1]))
+
 class Decoder(nn.Module):
     def __init__(self, latent_dims, x_shape):
         super(Decoder, self).__init__()
@@ -44,9 +70,9 @@ class Decoder(nn.Module):
         z = torch.sigmoid(self.linear2(z)) #modify later when data is non-binary
         self.x_hat = z.reshape((-1, self.x_shape[-2], self.x_shape[-1]))
     
-class VariationalAutoencoder(nn.Module):
+class EEGNeXVariationalAutoencoder(nn.Module):
     def __init__(self, latent_dims, x_shape, pred_dim):
-        super(VariationalAutoencoder, self).__init__()
+        super(EEGNeXVariationalAutoencoder, self).__init__()
         self.encoder = VariationalEncoder(latent_dims, x_shape)
         self.decoder = Decoder(latent_dims, x_shape)
         self.pred_head = nn.Linear(latent_dims, pred_dim)
@@ -84,7 +110,7 @@ def plot_latent(model, data, num_batches=100):
     all_z = []
     all_y = []
     for i, (x, y) in enumerate(data):
-        mu, z = model.encoder(x.to(device))
+        z = model.encoder(x.to(device))
         z = z.to('cpu').detach().numpy()
         all_z.append(z)
         all_y.append(y)
