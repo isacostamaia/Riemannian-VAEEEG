@@ -21,7 +21,7 @@ class VariationalEncoder(nn.Module):
         self.kl = 0
 
     def forward(self, x):
-        self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
+        self.N.loc = self.N.loc.cuda() #get sampling on the GPU
         self.N.scale = self.N.scale.cuda()
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.linear1(x))
