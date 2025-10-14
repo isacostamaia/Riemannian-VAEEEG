@@ -229,12 +229,14 @@ def plot_latent_by_subject(model, loader):
 from playground.vanilla_vae import VariationalAutoencoder
 from playground.eegnex_vae import EEGNeXVariationalAutoencoder
 from playground.higgs_vae import HiggsVariationalAutoencoder
+from playground.prompt_eegnex_vae import PromptEEGNeXVariationalAutoencoder
 
 latent_dims = 45
 n_targets = 1 #regression scalar     #len(data.dataset.targets.unique())
 # model = VariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
-model = EEGNeXVariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+# model = EEGNeXVariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
 # model = HiggsVariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
+model = PromptEEGNeXVariationalAutoencoder(latent_dims, x_shape, n_targets).to(device) # GPU
 
 
 from typing import Optional
@@ -270,6 +272,7 @@ def train_one_epoch(
         X, y = batch[0], batch[1]
         X, y = X.to(device).float(), y.to(device).float()
 
+        beta = 1e-3
         optimizer.zero_grad(set_to_none=True)
         preds = model(X)
         loss = loss_fn(preds, y)
@@ -279,6 +282,14 @@ def train_one_epoch(
 
         loss.backward()
         optimizer.step()
+
+        # Check prompt gradients
+        print("prompts req grad", model.encoder.pool.prompts.requires_grad)  # should be True
+        print("keys req grad", model.encoder.pool.keys.requires_grad)     # should be True
+        print("prompts grad ", model.encoder.pool.prompts.grad)           # likely None
+        print("keys grad",model.encoder.pool.keys.grad)
+
+
 
         total_loss += loss.item()
 

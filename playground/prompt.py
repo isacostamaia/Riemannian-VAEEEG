@@ -1,7 +1,55 @@
 #%%
-"""
-Prompt pool module inspired by "Learning to Prompt for Continual Learning" (L2P).
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
+
+class PromptPool(nn.Module):
+    """
+    (original) L2P-style prompt pool module with minimal edit to allow keys to learn.
+    """
+
+    def __init__(self, num_prompts: int, prompt_length: int, prompt_dim: int, key_dim: int, top_k: int = 5):
+        super().__init__()
+        self.num_prompts = num_prompts
+        self.prompt_length = prompt_length
+        self.prompt_dim = prompt_dim
+        self.key_dim = key_dim
+        self.top_k = top_k
+
+        # Prompt embeddings: (N, L_p, D_p)
+        self.prompts = nn.Parameter(torch.randn(num_prompts, prompt_length, prompt_dim))
+        nn.init.xavier_uniform_(self.prompts)
+
+        # Key embeddings: (N, D_key)
+        self.keys = nn.Parameter(torch.randn(num_prompts, key_dim))
+        nn.init.xavier_uniform_(self.keys)
+
+    def forward(self, query: torch.Tensor):
+        B = query.size(0)
+
+        # Normalize query and keys for cosine similarity
+        query_norm = F.normalize(query, dim=-1)
+        keys_norm = F.normalize(self.keys, dim=-1)
+
+        # Compute cosine similarity: (B, N)
+        sim = torch.matmul(query_norm, keys_norm.T)
+
+        #soft attention to have keys grads
+        attn = F.softmax(sim / 0.1, dim=-1)  # temperature can be tuned
+        # Weighted sum of prompts: (B, L_p, D_p)
+        weighted_prompts = torch.einsum('bn,nld->bld', attn, self.prompts)
+        # Flatten L_p * top_k to match previous output shape
+        prompts_seq = weighted_prompts.repeat(1, self.top_k, 1)
+
+        return prompts_seq  # (B, K*L_p, D_p)
+
+
+"""
+Prompt Pool Weighted Prompt module adapted from "Learning to Prompt for Continual Learning" (L2P).
+This version assumes that all prompts are mixed into a single prompt of dim R^(L*D_p) 
+according to their importance regarding the input by doing 
+a weighted average of prompts. 
 This version assumes **2D inputs** (no channel dimension). You can prepend prompt vectors
 directly along the feature dimension of your VAE input (e.g. if inputs are shaped `(B, D)`)
 by concatenating the selected prompt vectors to the input features.
@@ -27,7 +75,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class PromptPool(nn.Module):
+class PromptPool_WP(nn.Module):
     def __init__(
         self,
         num_prompts: int = 100,
@@ -118,7 +166,8 @@ def prepend_prompts_to_vector(x: torch.Tensor, prompts: torch.Tensor) -> torch.T
     """
     assert x.ndim == 2, "x must be (B, D)"
     B, D = x.shape
-    Bp, L, Dp = prompts.shape
+    Bp, L, Dp = prompts.shape #if prompts from PromptPool instead of PromptPool_WP
+                              # Bp, K*L, Dp = prompts.shape
     assert B == Bp, "batch size mismatch"
 
     prompts_flat = prompts.reshape(B, L * Dp)
@@ -130,12 +179,12 @@ if __name__ == "__main__":
     pool = PromptPool(num_prompts=10, prompt_dim=8, prompt_length=2, key_dim=16, top_k=3)
     q = torch.randn(5, 16)
     prompts = pool(q)
-    print('Prompts shape:', prompts.shape)  # (5, 2, 8)
-
+    print('Prompts shape:', prompts.shape)  # (5, 2, 8) == (B, L, D_p) if PromptPool_WP
+                                            # (5, 6, 8) ==  (B, K * L, D_p) if Prompt Pool
     x = torch.randn(5, 32)
     x_prep = prepend_prompts_to_vector(x, prompts)
-    print('Prepended shape:', x_prep.shape)  # (5, 32 + 16)
-
+    print('Prepended shape:', x_prep.shape)  # (5, 32 + 16) == (B, D + L * D_p) if PromptPool_WP
+                                             # (5, 32 + 48)  == (B, D + L* D_p * K) if PromptPool
     print('2D PromptPool module test passed.')
 
 # %%
