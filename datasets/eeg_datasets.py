@@ -10,7 +10,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from moabb.datasets import BI2013a, Zhou2016
-from moabb.paradigms import P300, MotorImagery
+from moabb.paradigms import P300, MotorImagery, LeftRightImagery
 from pyriemann.spatialfilters import Xdawn
 from pyriemann.estimation import ERPCovariances, Covariances
 
@@ -21,35 +21,49 @@ shutil.copy_tree = copy_tree
 
 from utils.manifold import SPDManifold
 
-def moabb_to_epochs(dataset, paradigm):
+def moabb_to_epochs(dataset, paradigm, subjects=None, classes_of_int=None):
     """
     Gets dataset from moabb
         Returns X data array of shape (epochs, channels, times)
         y labels array of length epochs 
     """
-    subjects = dataset.subject_list[:4] #:4
+
+    if not subjects:
+        subjects = dataset.subject_list #:4
     epochs, y, meta = paradigm.get_data(dataset=dataset, subjects=subjects, return_epochs=True)
 
     #add domain_id == "session_subject_dataset" to metadata
     meta["domain_id"] = meta.session.astype(str) + "_" + meta.subject.astype(str) + "_" + dataset.code
 
+    #reject bad epochs
+    reject_criteria = dict(eeg=200e-6)  # threshold in Volts
+    epochs.drop_bad(reject=reject_criteria, verbose="warning")
+
+    #select the events corresponding to the remaining epochs
+    valid_event_indices = epochs.selection  # This contains indices of epochs kept
+    y = y[valid_event_indices]
+    meta = meta.iloc[valid_event_indices]
+    meta = meta.reset_index(drop=True)
+
+    if classes_of_int:
+        idx_clss = np.where(np.isin(y, classes_of_int))[0]
+        epochs = epochs[idx_clss]
+        y = y[idx_clss]
+        meta = meta.iloc[idx_clss]
+
+
     #filter data
     if isinstance(paradigm, P300):
-        #reject bad epochs
-        reject_criteria = dict(eeg=200e-6)  # threshold in Volts
-        epochs.drop_bad(reject=reject_criteria, verbose="warning")
-
-        #select the events corresponding to the remaining epochs
-        valid_event_indices = epochs.selection  # This contains indices of epochs kept
-        y = y[valid_event_indices]
-        meta = meta.iloc[valid_event_indices]
-
         l_freq = 1.0
         h_freq = 24.0
 
-    elif isinstance(paradigm, MotorImagery):
+    elif isinstance(paradigm, MotorImagery) or isinstance(paradigm, LeftRightImagery):
         l_freq = 8.0
         h_freq = 32.0
+
+    else:
+        raise NotImplementedError(f"Paradigm {paradigm} not supported yet.")
+
 
     epochs = epochs.copy().filter(l_freq=l_freq, h_freq=h_freq,
                                     method='iir',
@@ -134,7 +148,7 @@ def eeg_transform(X,
             X += epsilon * np.eye(X.shape[-1])  #Tikhonov Regularization #TODO test without it
 
 
-        elif isinstance(paradigm, MotorImagery):
+        elif isinstance(paradigm, MotorImagery) or isinstance(paradigm, LeftRightImagery):
             print("Using Covariances for Motor Imagery paradigm")
             X = Covariances(estimator=estimator).transform(X)
             # X += epsilon * np.eye(X.shape[-1])  #Tikhonov Regularization
@@ -237,6 +251,8 @@ class DomainBatchSampler(Sampler):
 #FIXED: split 1st, ERP estimation after
 def get_eeg_transform_all_domains(dataset, 
                                   paradigm,
+                                  classes_of_int = None,
+                                  subjects=None,
                                 **eeg_transform_params):
     """
     Given a dataset and its paradigm, treats, creates train test split and estimates data descriptor (cov matrices)
@@ -247,7 +263,7 @@ def get_eeg_transform_all_domains(dataset,
         every domain is present in both train and test and 
         label balance between train and test for every domain
     """
-    time_series, y, meta = moabb_to_epochs(dataset=dataset, paradigm=paradigm)
+    time_series, y, meta = moabb_to_epochs(dataset=dataset, paradigm=paradigm, classes_of_int=classes_of_int, subjects=subjects)
     domains = np.unique(meta["domain_id"])
 
     X_doms_train = []
@@ -362,12 +378,16 @@ def get_eeg_transform_all_domains(dataset,
 
 
 
-def get_eeg_dataloader_treated_by_domain(moabb_dataset, paradigm, batch_size, min_batch_size, **eeg_transform_params):
-
+def get_eeg_dataloader_treated_by_domain(moabb_dataset, paradigm, batch_size, min_batch_size, classes_of_int=None, subjects = None, **eeg_transform_params):
+    
     (X_train, y_train, meta_train, ts_train), \
     (X_val, y_val, meta_val, ts_val), \
     (X_test, y_test, meta_test, ts_test), \
-    (X_test_off, _, _, _)  = get_eeg_transform_all_domains(moabb_dataset, paradigm, **eeg_transform_params)
+    (X_test_off, _, _, _)  = get_eeg_transform_all_domains(dataset=moabb_dataset, 
+                                                           paradigm=paradigm, 
+                                                           classes_of_int=classes_of_int,
+                                                           subjects=subjects,
+                                                           **eeg_transform_params)
     #extra debug arg above
     dataset_train = EEGDataset(data=X_train,labels=y_train,original_ts=ts_train, metadata=meta_train)
     dataset_val = EEGDataset(data=X_val,labels=y_val,original_ts=ts_val, metadata=meta_val)
@@ -410,4 +430,3 @@ if __name__== "__main__":
     dataset = BI2013a()
     paradigm = P300()
     X, y, meta = moabb_to_epochs(dataset, paradigm)
-

@@ -22,22 +22,6 @@ def _convert_recursive(obj):
     else:
         return _convert_numeric(obj)
 
-# def load_config(path):
-#     """Load YAML config and auto-convert numeric strings to floats/ints.
-
-#     Paths are always resolved relative to the current working directory.
-#     """
-#     # Make path absolute relative to cwd if it isn't already
-#     if not os.path.isabs(path):
-#         path = os.path.abspath(path)  # cwd + relative path
-
-#     if not os.path.exists(path):
-#         raise FileNotFoundError(f"Config file not found: {path}")
-
-#     with open(path, "r") as f:
-#         cfg = yaml.safe_load(f)
-#     return _convert_recursive(cfg)
-
 def load_config(path):
     """Load YAML config and auto-convert numeric strings to floats/ints.
 
@@ -148,11 +132,33 @@ def get_dataloader(cfg):
     Load EEG dataloaders with caching and metadata tracking.
     Compatible with BI2013a / P300 datasets and project conventions.
     """
+    from moabb.datasets import BI2013a, BNCI2014_001, BNCI2015_004, Zhou2016
+    from moabb.paradigms import P300, MotorImagery, LeftRightImagery
+
+
     ds_cfg = cfg["dataset"]
     transform = cfg.get("transform", {})
     use_cache = cfg.get("use_cache", False)
     cache_dir = cfg.get("cache_dir", "datasets/cache")
     os.makedirs(cache_dir, exist_ok=True)
+
+    if ds_cfg["name"] == "BI2013a":
+        ds = BI2013a()
+    elif ds_cfg["name"] == "Zhou2016":
+        ds = Zhou2016()
+    elif ds_cfg["name"] == "BNCI2014_001":
+        ds =  BNCI2014_001()
+    elif ds_cfg["name"] == "BNCI2015_004":
+        ds =  BNCI2015_004()
+    else: raise NotImplementedError(f"Dataset {ds_cfg['name']} not supported yet.")
+
+    if ds_cfg["paradigm"] == "P300":
+        pg = P300()
+    elif ds_cfg["paradigm"] == "LeftRightImagery":
+        pg = LeftRightImagery()
+    elif ds_cfg["paradigm"] == "MotorImagery":
+        pg = MotorImagery()
+    else: raise NotImplementedError(f"Paradigm {ds_cfg['name']} not supported yet.")
 
     # ---- compute deterministic cache path ----
     cache_path = get_dataset_cache_path(cache_dir, ds_cfg)
@@ -175,29 +181,73 @@ def get_dataloader(cfg):
     # ---- otherwise build from scratch ----
     print("[INFO] Building dataset from scratch...")
 
-    if ds_cfg["name"] == "BI2013a":
-        from moabb.datasets import BI2013a
-        from moabb.paradigms import P300
+    train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
+        moabb_dataset=ds,
+        paradigm=pg,
+        classes_of_int=ds_cfg["classes_of_int"],
+        subjects=ds_cfg["subjects"],
+        batch_size = cfg["batch_size"],
+        min_batch_size= cfg["min_batch_size"],
+        **transform,
+    )
+    
+    # if ds_cfg["name"] == "BI2013a":
+    #     from moabb.datasets import BI2013a
+    #     from moabb.paradigms import P300
 
-        train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
-            moabb_dataset=BI2013a(),
-            paradigm=P300(),
-            **{k: v for k, v in cfg.items() if k not in ["dataset", "transform", "use_cache", "cache_dir"]},
-            **transform,
-        )
+    #     train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
+    #         moabb_dataset=BI2013a(),
+    #         paradigm=P300(),
+    #         classes_of_int=ds_cfg["classes_of_int"],
+    #         subjects=ds_cfg["subjects"],
+    #         batch_size = cfg["batch_size"],
+    #         min_batch_size= cfg["min_batch_size"],
+    #         **transform,
+    #     )
 
-    elif ds_cfg["name"] == "Zhou2016":
-        from moabb.datasets import Zhou2016
-        from moabb.paradigms import MotorImagery
+    # elif ds_cfg["name"] == "Zhou2016":
+    #     from moabb.datasets import Zhou2016
+    #     from moabb.paradigms import LeftRightImagery
 
-        train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
-            moabb_dataset=Zhou2016(),
-            paradigm=MotorImagery(),
-            **{k: v for k, v in cfg.items() if k not in ["dataset", "transform", "use_cache", "cache_dir"]},
-            **transform,
-        )
-    else:
-        raise NotImplementedError(f"Dataset {ds_cfg['name']} not supported yet.")
+    #     train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
+    #         moabb_dataset=Zhou2016(),
+    #         paradigm=LeftRightImagery(),
+    #         classes_of_int=ds_cfg["classes_of_int"],
+    #         subjects=ds_cfg["subjects"],
+    #         batch_size = cfg["batch_size"],
+    #         min_batch_size= cfg["min_batch_size"],
+    #         **transform,
+    #     )
+
+    # elif ds_cfg["name"] == "BNCI2014_001":
+    #     from moabb.datasets import BNCI2014_001
+    #     from moabb.paradigms import LeftRightImagery
+
+    #     train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
+    #         moabb_dataset=BNCI2014_001(),
+    #         paradigm=LeftRightImagery(),
+    #         classes_of_int=ds_cfg["classes_of_int"],
+    #         subjects=ds_cfg["subjects"],
+    #         batch_size = cfg["batch_size"],
+    #         min_batch_size= cfg["min_batch_size"],
+    #         **transform,
+    #     )
+
+    # elif ds_cfg["name"] == "BNCI2015_004":
+    #     from moabb.datasets import BNCI2015_004
+    #     from moabb.paradigms import Motor
+
+    #     train_loader, val_loader, test_loader, test_loader_off = get_eeg_dataloader_treated_by_domain(
+    #         moabb_dataset=BNCI2015_004(),
+    #         paradigm=LeftRightImagery(),
+    #         classes_of_int=ds_cfg["classes_of_int"],
+    #         subjects=ds_cfg["subjects"],
+    #         batch_size = cfg["batch_size"],
+    #         min_batch_size= cfg["min_batch_size"],
+    #         **transform,
+    #     )
+    # else:
+        # raise NotImplementedError(f"Dataset {ds_cfg['name']} not supported yet.")
 
     # ---- build metadata dict ----
     metadata = {

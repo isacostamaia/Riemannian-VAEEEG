@@ -2,7 +2,7 @@
 # Global experiment setup
 # ========================
 seed: 0
-exp_name: "BI2013a"
+exp_name: "BNCI2015004"
 exp_prefix: "m1m2"
 
 # ========================
@@ -29,7 +29,7 @@ model:
   m2:
     z1_dim: 4
     z2_dim: 4
-    class_weights: [0.2, 0.8] #should be a list of same length as the number of classes in dataset 
+    class_weights: null #should be a list of same length as the number of classes in dataset 
     # y_dim: 2
     hidden_dim: 8
     device: "cuda"
@@ -61,9 +61,9 @@ dataloader:
   class: "get_eeg_dataloader_treated_by_domain"
   params:
     dataset:
-      name: "BI2013a"
-      paradigm: "P300"
-      classes_of_int: null #all the classes from the paradigm will be considered
+      name: "BNCI2015_004"
+      paradigm: "MotorImagery"
+      classes_of_int: ["right_hand", "feet"] #only these classes will be considered
       subjects: null
     batch_size: 45
     min_batch_size: 5
